@@ -28,20 +28,23 @@ class KurisuVoiceConverter:
             return input_wav_path
 
         try:
-            # Set parameters for RVC Inference
-            params = {
-                "f0_up_key": pitch_shift,
-                "f0_method": "pm",
-                "index_rate": 0.75,
-            }
-            if self.index_path:
-                params["index_path"] = self.index_path
-                
-            self.rvc.set_params(**params)
+            # Set parameters for RVC Inference (menggunakan nama parameter yang didukung rvc_python v0.1.5)
+            self.rvc.set_params(
+                f0up_key=pitch_shift,
+                f0method="pm",
+                index_rate=0.75,
+                index_path=self.index_path if self.index_path else ""
+            )
             
             # Execute Inference Pipeline
             self.rvc.infer_file(input_wav_path, output_wav_path)
-            return output_wav_path
+            
+            # Validasi apakah file berhasil dibuat dan ukurannya lebih dari 0 bytes
+            if os.path.exists(output_wav_path) and os.path.getsize(output_wav_path) > 0:
+                return output_wav_path
+            else:
+                print(f"[RVC Error] Output file {output_wav_path} kosong (0 bytes) atau gagal dibuat.")
+                return input_wav_path
 
         except Exception as e:
             print(f"[RVC Inference Error] {e}")
