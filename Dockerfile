@@ -7,6 +7,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Unduh binary standalone cloudflared
+ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 /usr/local/bin/cloudflared
+RUN chmod +x /usr/local/bin/cloudflared
+
 WORKDIR /app
 
 # Copy requirements dan install dependencies
@@ -22,12 +26,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-# Tambahkan instalasi cloudflared
-RUN wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && \
-    dpkg -i cloudflared-linux-amd64.deb && \
-    rm cloudflared-linux-amd64.deb
-
-# Jalankan uvicorn dan tunnel bersamaan
-CMD cloudflared tunnel --no-autoupdate run --token eyJhIjoiMTVmMjRiOTE2ODY4ZjU4OTZmZDQwMjQ5YmI1NzQ2YzEiLCJ0IjoiNmVhZjhlYTgtZTRiYy00ODQwLTk1YmEtOGFjNWJmOGM5NzVlIiwicyI6Ik1XTTJaVEkwWWpBdE9USTJOeTAwTlRRM0xUZzVZemt0Wm1NNVlUWXdOelV6WXpZMSJ9 & uvicorn main:app --host 0.0.0.0 --port 8000
+# Jalankan Cloudflare Tunnel di background lalu start Uvicorn
+CMD /usr/local/bin/cloudflared tunnel --no-autoupdate run --token eyJhIjoiMTVmMjRiOTE2ODY4ZjU4OTZmZDQwMjQ5YmI1NzQ2YzEiLCJ0IjoiNmVhZjhlYTgtZTRiYy00ODQwLTk1YmEtOGFjNWJmOGM5NzVlIiwicyI6Ik1XTTJaVEkwWWpBdE9USTJOeTAwTlRRM0xUZzVZemt0Wm1NNVlUWXdOelV6WXpZMSJ9 & uvicorn main:app --host 0.0.0.0 --port 8000
