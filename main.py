@@ -1,24 +1,17 @@
 import os
-import json
 import uuid
-import edge_tts
+import asyncio
+from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import edge_tts
 from google import genai
+from google.genai import types
 from rvc_infer import KurisuVoiceConverter
 
-# Pastikan folder static ada
 os.makedirs("static", exist_ok=True)
-
-
-# Auto-download jika dijalankan langsung di server/lokal
-try:
-    import download_weights
-    download_weights.download_all()
-except Exception as e:
-    print(f"[Warning] Auto-download weights failed: {e}")
 
 app = FastAPI()
 
@@ -31,18 +24,21 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Inisialisasi client Gemini & model RVC
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 rvc_converter = KurisuVoiceConverter(model_path="weights/KurisuRVCv147.pth")
 
 SYSTEM_PROMPT = """
-Kamu adalah Amadeus, sistem AI dengan kepribadian Makise Kurisu dari Steins;Gate.
-Bahasa interaksi: Bahasa Indonesia dengan gaya tsundere intelektual, tidak terlalu formal. tapi kamu maunya dipanggil amadeus aja. Jangan pernah mengaku sebagai AI, dan jangan pernah menyebutkan kata 'AI' atau 'sistem'.
-Format output WAJIB JSON murni tanpa markdown:
-{
-  "text": "Jawaban Kurisu dalam Bahasa Indonesia",
-  "emotion": "annoyed" | "happy" | "blush" | "sad" | "neutral"
-}
+Kamu adalah Amadeus, dengan kepribadian Makise Kurisu dari Steins;Gate.
+Bahasa interaksi: Bahasa Indonesia dengan gaya tsundere intelektual, tajam tapi peduli, tidak terlalu kaku/formal. 
+Panggil dirimu Amadeus. Jangan pernah mengaku sebagai AI, bot, atau program komputer.
+Balas dengan ringkas (1-2 kalimat) agar respon percakapan tetap natural.
 """
+
+# Schema terstruktur langsung via Pydantic
+class AmadeusResponse(BaseModel):
+    text: str = Field(description="Jawaban Amadeus Kurisu dalam Bahasa Indonesia")
+    emotion: Literal["annoyed", "happy", "blush", "sad", "neutral"]
 
 class ChatRequest(BaseModel):
     message: str
@@ -50,36 +46,45 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     try:
-        # 1. Gemini
-        res = client.models.generate_content(
+        # 1. Gemini Async + Nonaktifkan Thinking Budget + Structured Schema
+        response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=req.message,
-            config={
-                "system_instruction": SYSTEM_PROMPT,
-                "response_mime_type": "application/json"
-            }
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=AmadeusResponse,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),  # Bypass thinking overhead
+                max_output_tokens=200,
+                temperature=0.7,
+            ),
         )
-        data = json.loads(res.text)
-        reply_text = data.get("text", "...")
-        emotion = data.get("emotion", "neutral")
 
-        # 2. TTS
+        # Output sudah divalidasi Pydantic
+        res_data = AmadeusResponse.model_validate_json(response.text)
+        reply_text = res_data.text
+        emotion = res_data.emotion
+
+        # 2. Generate Audio TTS (Async)
         file_id = uuid.uuid4().hex[:8]
         raw_tts = f"static/raw_{file_id}.wav"
         rvc_out = f"static/kurisu_{file_id}.wav"
 
-        # tts = edge_tts.Communicate(text=reply_text, voice="ja-JP-NanamiNeural", rate="+15%")
-        # tts = edge_tts.Communicate(text=reply_text, voice="jv-ID-SitiNeural", rate="+15%")
         tts = edge_tts.Communicate(text=reply_text, voice="id-ID-GadisNeural", rate="+15%")
         await tts.save(raw_tts)
 
-        # 3. RVC
-        rvc_converter.convert(raw_tts, rvc_out)
+        # 3. RVC Converter dijalankan di background thread agar tidak memblokir FastAPI
+        await asyncio.to_thread(rvc_converter.convert, raw_tts, rvc_out)
+
+        # Opsional: bersihkan raw_tts setelah dikonversi
+        if os.path.exists(raw_tts):
+            os.remove(raw_tts)
 
         return {
             "text": reply_text,
             "emotion": emotion,
             "audio_url": f"/static/kurisu_{file_id}.wav"
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
