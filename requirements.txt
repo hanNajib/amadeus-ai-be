@@ -10,3 +10,4 @@ soundfile
 numpy<2.0.0
 librosa
 python-dotenv
+rvc-python
