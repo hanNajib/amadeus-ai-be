@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+google-genai
+edge-tts
+pydantic
+soundfile
+numpy<2.0.0
+librosa
+python-dotenv
