@@ -69,7 +69,8 @@ async def chat(req: ChatRequest):
         rvc_out = f"static/kurisu_{file_id}.wav"
 
         # tts = edge_tts.Communicate(text=reply_text, voice="ja-JP-NanamiNeural", rate="+15%")
-        tts = edge_tts.Communicate(text=reply_text, voice="jv-ID-SitiNeural", rate="+15%")
+        # tts = edge_tts.Communicate(text=reply_text, voice="jv-ID-SitiNeural", rate="+15%")
+        tts = edge_tts.Communicate(text=reply_text, voice="id-ID-GadisNeural", rate="+15%")
         await tts.save(raw_tts)
 
         # 3. RVC
