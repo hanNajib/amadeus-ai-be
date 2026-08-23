@@ -30,4 +30,4 @@ RUN wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/c
     rm cloudflared-linux-amd64.deb
 
 # Jalankan uvicorn dan tunnel bersamaan
-CMD cloudflared tunnel --no-autoupdate run --token TOKEN_DARI_CLOUDFLARE_KAMU & uvicorn main:app --host 0.0.0.0 --port 8000
+CMD cloudflared tunnel --no-autoupdate run --token eyJhIjoiMTVmMjRiOTE2ODY4ZjU4OTZmZDQwMjQ5YmI1NzQ2YzEiLCJ0IjoiNmVhZjhlYTgtZTRiYy00ODQwLTk1YmEtOGFjNWJmOGM5NzVlIiwicyI6Ik1XTTJaVEkwWWpBdE9USTJOeTAwTlRRM0xUZzVZemt0Wm1NNVlUWXdOelV6WXpZMSJ9 & uvicorn main:app --host 0.0.0.0 --port 8000
