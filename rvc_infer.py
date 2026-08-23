@@ -1,6 +1,6 @@
 import os
 import soundfile as sf
-from rvc_python.infer import infer_file
+from rvc_python.infer import RVCInference
 
 class KurisuVoiceConverter:
     def __init__(
@@ -17,23 +17,30 @@ class KurisuVoiceConverter:
         else:
             print(f"[RVC Warning] Model tidak ditemukan di {self.model_path}!")
 
+        # Initialize the RVC Inference engine
+        self.rvc = RVCInference(device="cpu")
+        if os.path.exists(self.model_path):
+            self.rvc.load_model(self.model_path)
+
     def convert(self, input_wav_path: str, output_wav_path: str, pitch_shift: int = 0):
         if not os.path.exists(self.model_path):
             print("[RVC Error] File model pth tidak ditemukan, menggunakan audio asli.")
             return input_wav_path
 
         try:
-            # Eksekusi RVC Inference Pipeline
-            infer_file(
-                input_path=input_wav_path,
-                model_path=self.model_path,
-                index_path=self.index_path if self.index_path else "",
-                device="cpu",               # Server Dokploy CPU
-                f0_method="pm",             # 'pm' sangat cepat dan ringan di CPU VPS
-                f0_up_key=pitch_shift,      # Set 0 jika base suara sudah wanita
-                index_rate=0.75,            # Kemiripan karakter Kurisu 75%
-                output_path=output_wav_path
-            )
+            # Set parameters for RVC Inference
+            params = {
+                "f0_up_key": pitch_shift,
+                "f0_method": "pm",
+                "index_rate": 0.75,
+            }
+            if self.index_path:
+                params["index_path"] = self.index_path
+                
+            self.rvc.set_params(**params)
+            
+            # Execute Inference Pipeline
+            self.rvc.infer_file(input_wav_path, output_wav_path)
             return output_wav_path
 
         except Exception as e:
