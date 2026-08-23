@@ -23,3 +23,11 @@ COPY . .
 EXPOSE 8000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Tambahkan instalasi cloudflared
+RUN wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && \
+    dpkg -i cloudflared-linux-amd64.deb && \
+    rm cloudflared-linux-amd64.deb
+
+# Jalankan uvicorn dan tunnel bersamaan
+CMD cloudflared tunnel --no-autoupdate run --token TOKEN_DARI_CLOUDFLARE_KAMU & uvicorn main:app --host 0.0.0.0 --port 8000
