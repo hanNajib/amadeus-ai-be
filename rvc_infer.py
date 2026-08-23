@@ -1,6 +1,14 @@
 import os
 import soundfile as sf
+import torch
+import fairseq.data.dictionary
 from rvc_python.infer import RVCInference
+
+# Fix untuk PyTorch 2.6+ di mana weights_only=True memblokir fairseq Dictionary
+try:
+    torch.serialization.add_safe_globals([fairseq.data.dictionary.Dictionary])
+except AttributeError:
+    pass
 
 class KurisuVoiceConverter:
     def __init__(
