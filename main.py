@@ -2,7 +2,6 @@ import os
 import json
 import uuid
 import edge_tts
-import urllib.request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,16 +11,6 @@ from rvc_infer import KurisuVoiceConverter
 
 # Pastikan folder static ada
 os.makedirs("static", exist_ok=True)
-
-
-# Cetak IP Public Server Sekolah langsung ke Dokploy Logs saat startup
-try:
-    server_ip = urllib.request.urlopen("https://api.ipify.org", timeout=5).read().decode("utf8")
-    print(f"\n==========================================")
-    print(f"[SERVER PUBLIC IP] -> {server_ip}")
-    print(f"==========================================\n")
-except Exception as e:
-    print(f"[IP Fetch Failed] -> {e}")
 
 
 # Auto-download jika dijalankan langsung di server/lokal
@@ -79,7 +68,7 @@ async def chat(req: ChatRequest):
         raw_tts = f"static/raw_{file_id}.wav"
         rvc_out = f"static/kurisu_{file_id}.wav"
 
-        tts = edge_tts.Communicate(text=reply_text, voice="id-ID-GadisNeural", rate="+15%")
+        tts = edge_tts.Communicate(text=reply_text, voice="ja-JP-NanamiNeural", rate="+15%")
         await tts.save(raw_tts)
 
         # 3. RVC
