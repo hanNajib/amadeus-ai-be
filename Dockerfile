@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Copy requirements dan install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=1000 --retries=10 -r requirements.txt
 
 # Download model bobot dari Hugging Face ke dalam container
 COPY download_weights.py .
