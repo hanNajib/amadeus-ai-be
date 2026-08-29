@@ -43,12 +43,15 @@ class AmadeusResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class TTSRequest(BaseModel):
+    text: str
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     try:
         # 1. Gemini Async + Nonaktifkan Thinking Budget + Structured Schema
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",
             contents=req.message,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
@@ -83,6 +86,31 @@ async def chat(req: ChatRequest):
         return {
             "text": reply_text,
             "emotion": emotion,
+            "audio_url": f"/static/kurisu_{file_id}.wav"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/tts")
+async def generate_voice(req: TTSRequest):
+    try:
+        file_id = uuid.uuid4().hex[:8]
+        raw_tts = f"static/raw_{file_id}.wav"
+        rvc_out = f"static/kurisu_{file_id}.wav"
+
+        # Gunakan Edge TTS (suara base)
+        tts = edge_tts.Communicate(text=req.text, voice="id-ID-GadisNeural", rate="+15%")
+        await tts.save(raw_tts)
+
+        # RVC Converter dijalankan di background thread
+        await asyncio.to_thread(rvc_converter.convert, raw_tts, rvc_out)
+
+        # Bersihkan raw audio
+        if os.path.exists(raw_tts):
+            os.remove(raw_tts)
+
+        return {
             "audio_url": f"/static/kurisu_{file_id}.wav"
         }
 
