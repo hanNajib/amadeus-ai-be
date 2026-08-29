@@ -2,7 +2,7 @@ import os
 import uuid
 import asyncio
 from typing import Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -109,6 +109,36 @@ async def generate_voice(req: TTSRequest):
         # Bersihkan raw audio
         if os.path.exists(raw_tts):
             os.remove(raw_tts)
+
+        return {
+            "audio_url": f"/static/kurisu_{file_id}.wav"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/voice-changer")
+async def voice_changer(audio: UploadFile = File(...)):
+    try:
+        file_id = uuid.uuid4().hex[:8]
+        # Baca ekstensi asli file
+        ext = os.path.splitext(audio.filename)[1]
+        if not ext:
+            ext = ".wav"
+            
+        raw_audio = f"static/raw_{file_id}{ext}"
+        rvc_out = f"static/kurisu_{file_id}.wav"
+        
+        # Simpan file yang diupload ke disk sementara
+        with open(raw_audio, "wb") as f:
+            f.write(await audio.read())
+            
+        # RVC Converter dijalankan di background thread
+        await asyncio.to_thread(rvc_converter.convert, raw_audio, rvc_out)
+
+        # Bersihkan raw audio
+        if os.path.exists(raw_audio):
+            os.remove(raw_audio)
 
         return {
             "audio_url": f"/static/kurisu_{file_id}.wav"
