@@ -51,7 +51,7 @@ async def chat(req: ChatRequest):
     try:
         # 1. Gemini Async + Nonaktifkan Thinking Budget + Structured Schema
         response = await client.aio.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=req.message,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
