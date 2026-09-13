@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+import time
 from typing import Literal
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +41,13 @@ class AmadeusResponse(BaseModel):
     text: str = Field(description="Jawaban Amadeus Kurisu dalam Bahasa Indonesia")
     emotion: Literal["annoyed", "happy", "blush", "sad", "neutral"]
 
+class ProcessingTime(BaseModel):
+    gemini_api: float = Field(description="Waktu pemrosesan Gemini API (detik)")
+    edge_tts: float = Field(description="Waktu pemrosesan Edge TTS (detik)")
+    rvc_conversion: float = Field(description="Waktu pemrosesan RVC conversion (detik)")
+    file_cleanup: float = Field(description="Waktu cleanup file (detik)")
+    total: float = Field(description="Total waktu pemrosesan (detik)")
+
 class ChatRequest(BaseModel):
     message: str
 
@@ -49,7 +57,11 @@ class TTSRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     try:
-        # 1. Gemini Async + Nonaktifkan Thinking Budget + Structured Schema
+        timing = {}
+        start_total = time.time()
+
+        # Gemini API call
+        start_gemini = time.time()
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=req.message,
@@ -57,36 +69,45 @@ async def chat(req: ChatRequest):
                 system_instruction=SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 response_schema=AmadeusResponse,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),  # Bypass thinking overhead
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
                 max_output_tokens=200,
                 temperature=0.7,
             ),
         )
+        timing["gemini_api"] = round(time.time() - start_gemini, 3)
 
-        # Output sudah divalidasi Pydantic
         res_data = AmadeusResponse.model_validate_json(response.text)
         reply_text = res_data.text
         emotion = res_data.emotion
 
-        # 2. Generate Audio TTS (Async)
         file_id = uuid.uuid4().hex[:8]
         raw_tts = f"static/raw_{file_id}.wav"
         rvc_out = f"static/kurisu_{file_id}.wav"
 
+        # Edge TTS
+        start_tts = time.time()
         tts = edge_tts.Communicate(text=reply_text, voice="id-ID-GadisNeural", rate="+15%")
         await tts.save(raw_tts)
+        timing["edge_tts"] = round(time.time() - start_tts, 3)
 
-        # 3. RVC Converter dijalankan di background thread agar tidak memblokir FastAPI
+        # RVC Conversion
+        start_rvc = time.time()
         await asyncio.to_thread(rvc_converter.convert, raw_tts, rvc_out)
+        timing["rvc_conversion"] = round(time.time() - start_rvc, 3)
 
-        # Opsional: bersihkan raw_tts setelah dikonversi
+        # File Cleanup
+        start_cleanup = time.time()
         if os.path.exists(raw_tts):
             os.remove(raw_tts)
+        timing["file_cleanup"] = round(time.time() - start_cleanup, 3)
+
+        timing["total"] = round(time.time() - start_total, 3)
 
         return {
             "text": reply_text,
             "emotion": emotion,
-            "audio_url": f"/static/kurisu_{file_id}.wav"
+            "audio_url": f"/static/kurisu_{file_id}.wav",
+            "processing_time": timing
         }
 
     except Exception as e:
@@ -95,23 +116,35 @@ async def chat(req: ChatRequest):
 @app.post("/api/tts")
 async def generate_voice(req: TTSRequest):
     try:
+        timing = {}
+        start_total = time.time()
+
         file_id = uuid.uuid4().hex[:8]
         raw_tts = f"static/raw_{file_id}.wav"
         rvc_out = f"static/kurisu_{file_id}.wav"
 
-        # Gunakan Edge TTS (suara base)
+        # Edge TTS
+        start_tts = time.time()
         tts = edge_tts.Communicate(text=req.text, voice="id-ID-GadisNeural", rate="+15%")
         await tts.save(raw_tts)
+        timing["edge_tts"] = round(time.time() - start_tts, 3)
 
-        # RVC Converter dijalankan di background thread
+        # RVC Conversion
+        start_rvc = time.time()
         await asyncio.to_thread(rvc_converter.convert, raw_tts, rvc_out)
+        timing["rvc_conversion"] = round(time.time() - start_rvc, 3)
 
-        # Bersihkan raw audio
+        # File Cleanup
+        start_cleanup = time.time()
         if os.path.exists(raw_tts):
             os.remove(raw_tts)
+        timing["file_cleanup"] = round(time.time() - start_cleanup, 3)
+
+        timing["total"] = round(time.time() - start_total, 3)
 
         return {
-            "audio_url": f"/static/kurisu_{file_id}.wav"
+            "audio_url": f"/static/kurisu_{file_id}.wav",
+            "processing_time": timing
         }
 
     except Exception as e:
@@ -120,8 +153,10 @@ async def generate_voice(req: TTSRequest):
 @app.post("/api/voice-changer")
 async def voice_changer(audio: UploadFile = File(...)):
     try:
+        timing = {}
+        start_total = time.time()
+
         file_id = uuid.uuid4().hex[:8]
-        # Baca ekstensi asli file
         ext = os.path.splitext(audio.filename)[1]
         if not ext:
             ext = ".wav"
@@ -129,19 +164,28 @@ async def voice_changer(audio: UploadFile = File(...)):
         raw_audio = f"static/raw_{file_id}{ext}"
         rvc_out = f"static/kurisu_{file_id}.wav"
         
-        # Simpan file yang diupload ke disk sementara
+        # File Upload
+        start_upload = time.time()
         with open(raw_audio, "wb") as f:
             f.write(await audio.read())
-            
-        # RVC Converter dijalankan di background thread
+        timing["file_upload"] = round(time.time() - start_upload, 3)
+        
+        # RVC Conversion
+        start_rvc = time.time()
         await asyncio.to_thread(rvc_converter.convert, raw_audio, rvc_out)
+        timing["rvc_conversion"] = round(time.time() - start_rvc, 3)
 
-        # Bersihkan raw audio
+        # File Cleanup
+        start_cleanup = time.time()
         if os.path.exists(raw_audio):
             os.remove(raw_audio)
+        timing["file_cleanup"] = round(time.time() - start_cleanup, 3)
+
+        timing["total"] = round(time.time() - start_total, 3)
 
         return {
-            "audio_url": f"/static/kurisu_{file_id}.wav"
+            "audio_url": f"/static/kurisu_{file_id}.wav",
+            "processing_time": timing
         }
 
     except Exception as e:
